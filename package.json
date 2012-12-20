@@ -1,0 +1,17 @@
+{
+  "name": "dfatool",
+  "version": "0.0.1",
+  "description": "JavaScript Data Flow Analyze Tool",
+  "main": "dfatool.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": "",
+  "keywords": [
+    "Data",
+    "Flow",
+    "Analyze"
+  ],
+  "author": "Yi Shen <bm2736892@gmail.com>",
+  "license": "BSD"
+}
