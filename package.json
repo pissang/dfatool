@@ -15,6 +15,9 @@
     "Flow",
     "Analyze"
   ],
-  "author": "Yi Shen <bm2736892@gmail.com>",
+  "dependencies": {
+    "esprima": ">=1.0.0",
+    "escodegen" : ">=0.0.1"
+  },
   "license": "BSD"
 }

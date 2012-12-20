@@ -2,7 +2,7 @@
 // dfatool.js
 // JavaScript Data Flow Analyze Tool
 //
-// author lang(shenyi01@baidu.com)
+// author Yi Shen(bm2736892@gmail.com)
 //====================================
 
 var codegen = require("escodegen");
