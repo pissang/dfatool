@@ -10,11 +10,6 @@
     "type" : "git",
     "url" : "https://github.com/pissang/dfatool.git"
   },
-  "keywords": [
-    "Data",
-    "Flow",
-    "Analyze"
-  ],
   "dependencies": {
     "esprima": ">=1.0.0",
     "escodegen" : ">=0.0.1"
