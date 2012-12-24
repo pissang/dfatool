@@ -20,7 +20,7 @@ Build scope for the program
 	dfatool.buildScope(ast, globalScope);
 
 
-anaylyze the code
+analyze the code
 	
 	globalScope.initialize();
 	globalScope.derivation();

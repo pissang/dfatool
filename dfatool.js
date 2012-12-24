@@ -60,7 +60,7 @@ var TEMPLATE_LITERAL_EXPRESSION = function(val){
 	return {
 		"type" : "Literal",
 		"value" : val,
-		"raw"	: val //whats the difference between raw and value??
+		"raw"	: val.toString()
 	}
 }
 
@@ -68,6 +68,14 @@ var TEMPLATE_ARRAY_EXPRESSION = function(){
 	return {
 		"type" : "ArrayExpression",
 		"elements" : []
+	}
+}
+var TEMPLATE_BINARY_EXPRESSION = function(operator, left, right){
+	return {
+		"type" : "BinaryExpression",
+		"operator" : operator,
+		"left" : left,
+		"right" : right
 	}
 }
 var TEMPLATE_UNARY_EXPRESSION = function(arg){
@@ -89,7 +97,7 @@ function walk(root, before, after, isReplaceReference){
 
 	if(Array.isArray(root)){
 		root.forEach(function(child){
-			walk(child);
+			walk(child, before, after, isReplaceReference);
 		})
 		return ;
 	}
@@ -167,7 +175,6 @@ function walk(root, before, after, isReplaceReference){
 			delete node.__childidx__;
 			delete node.__children__;
 			delete node.__map__;
-			node.__children__ = null;
 
 			if( after ){
 				// call after all its children visited
@@ -287,6 +294,9 @@ function walk(root, before, after, isReplaceReference){
 	function next(){
 		var parent = _stack[_stack.length-1];
 		if( parent ){
+			if( ! parent.__children__ ){
+				console.log("okk");
+			}
 			var sibling = parent.__children__[ ++parent.__childidx__ ];
 			if( ! sibling ){
 				// back to parent
@@ -484,6 +494,16 @@ Scope.prototype.assign = function(lhs, rhs, loc){
 			// or anoymous function or object
 		}
 	
+	}
+	// bad case
+	else if( lhs.type == "Identifier"){
+		var globalScope = this.getGlobalScope();
+		var variable = globalScope.define(lhs.name);
+		if( globalScope == this){
+			variable.assign( rhs, loc);
+		}else{
+			log("Warning, maybe forget define ", lhs)
+		}
 	}
 	else{
 		// here loc is correspond to an id
@@ -726,81 +746,106 @@ Scope.prototype.clear = function(){
 Scope.prototype.initialize = function(){
 
 	var scope = this;
-	var currentBranch = null;
 
-	walk( this.ast, function( node){
+	function initializeInBranch( ast, currentBranch ){
 
-		switch(node.type){
-			case "FunctionDeclaration":
-				// function declaration can be defined in anywhere so we set the loc 0;
-				var dfNode = scope.assign(node["id"], node, 0 );
-				if( currentBranch && dfNode){
-					dfNode.conditionalStatement = currentBranch;
-				}
-				return false;
-			case "VariableDeclarator":
-				if( node["init"]){
-					var dfNode = scope.assign(node["id"], node["init"], scope.offsetLoc(node.loc.end) );
+		walk( ast, function( node){
+			var scope = node.scope;
+
+			switch(node.type){
+				case "FunctionDeclaration":
+					// function declaration can be defined in anywhere so we set the loc 0;
+					var dfNode = scope.assign(node["id"], node, 0 );
+					if( currentBranch && dfNode){
+						dfNode.conditionalStatement = currentBranch;
+					}
+					return false;
+				case "VariableDeclarator":
+					if( node["init"]){
+						var dfNode = scope.assign(node["id"], node["init"], scope.offsetLoc(node.loc.end) );
+						if( currentBranch && dfNode ){
+							dfNode.conditionalStatement = currentBranch;
+						}
+						return false;
+					}
+					break;
+				case "AssignmentExpression":
+					// support the chained assign statement like "module.q = module.Q = module.dom.q"; 
+					// will be convert to module.Q = module.dom.q; module.q = module.dom.q
+					var leftNodes = [node.left],
+						rightMost = node.right;
+					while( rightMost.type == "AssignmentExpression" ){
+						leftNodes.unshift(rightMost.left);
+						rightMost = rightMost.right;
+					}
+					leftNodes.forEach(function(leftNode){
+						var dfNode = scope.assign( leftNode, rightMost, scope.offsetLoc(node.loc.end) );
+						if( currentBranch && dfNode ){
+							dfNode.conditionalStatement = currentBranch;
+						}
+					})
+					return false;
+				case "ExpressionStatement":
+					// if the statement is a single call expression
+					if(node["expression"]["type"] == "CallExpression"){
+						var expr = node["expression"];
+						var dfNode = scope.use( expr["callee"], expr, scope.offsetLoc(node.loc.end) );
+						if( currentBranch && dfNode ){
+							dfNode.conditionalStatement = currentBranch;
+						}
+						return false;
+					}
+					break;
+				case "ReturnStatement":
+					if( ! node["argument"]){	//statement is "return;"
+						return;
+					}
+					var dfNode = scope._return.assign( node["argument"], scope.offsetLoc(node.loc.end) );
 					if( currentBranch && dfNode ){
 						dfNode.conditionalStatement = currentBranch;
 					}
 					return false;
-				}
-				break;
-			case "AssignmentExpression":
-				// support the chained assign statement like "module.q = module.Q = module.dom.q"; 
-				// will be convert to module.Q = module.dom.q; module.q = module.dom.q
-				var leftNodes = [node.left],
-					rightMost = node.right;
-				while( rightMost.type == "AssignmentExpression" ){
-					leftNodes.unshift(rightMost.left);
-					rightMost = rightMost.right;
-				}
-				leftNodes.forEach(function(leftNode){
-					var dfNode = scope.assign( leftNode, rightMost, scope.offsetLoc(node.loc.end) );
-					if( currentBranch && dfNode ){
-						dfNode.conditionalStatement = currentBranch;
-					}
-				})
-				return false;
-			case "ExpressionStatement":
-				// if the statement is a single call expression
-				if(node["expression"]["type"] == "CallExpression"){
-					var expr = node["expression"];
-					var dfNode = scope.use( expr["callee"], expr, scope.offsetLoc(node.loc.end) );
-					if( currentBranch && dfNode ){
-						dfNode.conditionalStatement = currentBranch;
+				case "IfStatement":
+					var consequent = new ConditionalStatement( currentBranch );
+					consequent.start = scope.offsetLoc( node["consequent"].loc.start );
+					consequent.end = scope.offsetLoc( node["consequent"].loc.end );
+					consequent.or( node["test"] );
+
+					initializeInBranch( node["consequent"], consequent );
+					if( node["alternate"] ){
+						var alternate = new ConditionalStatement( currentBranch );
+						alternate.start = scope.offsetLoc( node["alternate"].loc.start );
+						alternate.end = scope.offsetLoc( node["alternate"].loc.end );
+						consequent.alternate = alternate;
+						initializeInBranch( node["alternate"], alternate);
 					}
 					return false;
-				}
-				break;
-			case "ReturnStatement":
-				if( ! node["argument"]){	//statement is "return;"
-					return;
-				}
-				var dfNode = scope._return.assign( node["argument"], scope.offsetLoc(node.loc.end) );
-				if( currentBranch && dfNode ){
-					dfNode.conditionalStatement = currentBranch;
-				}
-				return false;
-			case "IfStatement":
-				var ifStatement = new IfStatement( currentBranch );
-				ifStatement.or( node["test"] );
-				currentBranch = ifStatement;
-				break;
-			case "SwitchStatement":
-				var discriminant = node["discriminant"];
-		}
+				case "SwitchStatement":
+					var discriminant = node["discriminant"];
+					// todo consider the situation of case without break statement;
+					node["cases"].forEach(function(_case){
+						if( ! _case.test ){	// todo, when the case have no test expression
+							return;
+						}
+						test = TEMPLATE_BINARY_EXPRESSION("==", discriminant, _case.test);
+						test.loc = _case.test.loc;
+						test.scope = scope;
+						var consequent = new ConditionalStatement( currentBranch );
+						consequent.or(test);
+						consequent.start = scope.offsetLoc( _case.loc.start );
+						consequent.end = scope.offsetLoc( _case.loc.end );
 
-		return true;
+						initializeInBranch( _case["consequent"], consequent);
+					})
+					return false;
+			}
 
-	}, function(node){
+			return true;
 
-		if( node.type == "IfStatement"){
-			currentBranch = currentBranch.parent;
-		}
-	} )
+		} )
+	}
 
+	initializeInBranch( this.ast, null );
 }
 // spread the expression of each value to a fix point
 // -worklist is an array of derivable items(which has a derivation method)
@@ -904,6 +949,14 @@ Scope.prototype.traverse = function(before, after){
 	after && after(this);
 }
 
+Scope.prototype.getGlobalScope = function(){
+	var ret = this;
+	while(ret.parent){
+		ret = ret.parent;
+	}
+	return ret;
+}
+
 Scope.prototype.toJSON = function(){
 	var ret = {
 		"define" : {},
@@ -982,7 +1035,8 @@ Variable.prototype.addNode = function(node, loc){
 	
 	node.host = this;
 	if( node.value ){
-		node.value.targetVariable = this;
+		// reattach value
+		node.attachValue( node.value );
 	}
 }
 
@@ -996,9 +1050,29 @@ Variable.prototype.inference = function(loc /*optional*/, accessPath /*optional*
 		loc = undefined;
 	}
 
-	// remove the use statement
+	var possibleBranch = null;
+	this._chain.forEach(function(node){
+		if( possibleBranch){
+			return;
+		}
+		if( node instanceof AssignStatement &&
+			node.conditionalStatement ){
+			possibleBranch = node.conditionalStatement.inBranch( loc );
+		}
+	})
 	var chain = this._chain.filter(function(node){
-		return node instanceof AssignStatement;
+		if( node instanceof UseStatement ){
+			return false;
+		}else if(node.conditionalStatement){
+			if( possibleBranch ){
+				return node.conditionalStatement.test() && 
+					node.conditionalStatement == possibleBranch;
+			}else{
+				return node.conditionalStatement.test()
+			}
+		}else{
+			return true;
+		}
 	})
 
 	var idx = this.inferenceIndex(loc, chain);
@@ -1015,6 +1089,14 @@ Variable.prototype.inference = function(loc /*optional*/, accessPath /*optional*
 	}else{
 		return res;
 	}
+}
+Variable.prototype.atLoc = function(loc /*optional*/){
+	var idx = this.inferenceIndex( loc );
+
+	return this._chain[ idx ];
+}
+Variable.prototype.at = function(idx){
+	return this._chain[idx];
 }
 Variable.prototype.inferenceIndex = function(loc, filteredChain /*optional*/){
 	filteredChain = filteredChain || this._chain;
@@ -1059,7 +1141,7 @@ Variable.prototype.asLibrary = function(){
 Variable.createAnoymous = function( expr ){
 	var value = new Value(expr, expr.scope);
 	var node = new AssignStatement(null);
-	node.setValue(value);
+	node.attachValue(value);
 	var variable = new Variable("__anoymous__", expr.scope);
 	// because anoymous variable(like lambda) always executed immediately
 	// so we assume the location is 0(at the top of scope);
@@ -1074,12 +1156,12 @@ Variable.merge = function(nodes){
 		if( ! node.accessPath ){// reaching definition
 			var value = node.value;
 			// create a new value with derived ast
-			ret = new Value( value.getDerivedAst(), value.scope);
+			ret = new Snapshot( value );
 		}else{	//assign an property
 			if(ret){
 				var value = node.value;
-				// create a new copy of value;
-				ret.access( node.accessPath, new Value(value.getDerivedAst(), value.scope) );
+				var ss = new Snapshot( value );
+				ret.access( node.accessPath, ss );
 			}else{
 
 			}
@@ -1092,7 +1174,7 @@ Variable.merge = function(nodes){
 //---------------------------------------------------
 // modified object is like a branch of svn or git
 var Modified = function(name, definedScope, useScope){
-
+	// @read-only
 	this.id = Modified.generateID();
 
 	this._chain = [];
@@ -1123,12 +1205,12 @@ var AssignStatement = function(accessPath, rhs, scope){
 	this.setScope(scope || null);
 
 	if( rhs ){
-		this.setValue( new Value(rhs, this.scope) );
+		this.attachValue( new Value(rhs, this.scope) );
 	}
 	this.loc = 0;
 
 	// the value is assigend in a conditional statement
-	// {IfStatement}
+	// {ConditionalStatement}
 	this.conditionalStatement = null;
 
 	this.repetitiveStatement = null;
@@ -1143,18 +1225,35 @@ AssignStatement.prototype.setScope = function(scope){
 		}
 	}
 }
-AssignStatement.prototype.setValue = function(value){
+AssignStatement.prototype.attachValue = function(value, keepName /*optional*/){
 	this.value = value;
 	if( this.scope){
 		this.value.setScope(this.scope);
 	}
-	// {AssignStatement}
+	// @read-only {AssignStatement}
 	value.host = this;
-	// {Variable}
+	// @read-only {Variable}
 	value.targetVariable = this.host;
+	// @read-only
+	keepName = isUndefined( keepName ) ? false : keepName;
+	if( ! keepName ){
+		if( this.accessPath ){
+			this.accessPath = Value.prototype.solveAccessPath( this.accessPath );
+			var last = this.accessPath[ this.accessPath.length-1 ];
+			if( last.type == "Literal" ){
+				var name = last.value;
+			}
+		}else{
+			var name = this.host ? this.host.name :  "";
+		}
+		value.name = name;
+	}
 
 }
 AssignStatement.prototype.derivation = function(getWorkListFilter){
+	if( this.conditionalStatement ){
+		this.conditionalStatement.derivation();
+	}
 	this.value.derivation(getWorkListFilter);
 }
 
@@ -1319,7 +1418,6 @@ Value.prototype.update = function(ast){
 			this.scopeSvForRebuild = ast.scope;	//save the scope for rebuild
 			ast["properties"].forEach(function(item, idx){
 				var propValue = new Value( item["value"], this.scope );
-				propValue.parent = this;
 				// key is literal or identifier
 				var keyName = item["key"]["name"] || item["key"]["value"];
 				this.set( keyName, propValue);
@@ -1346,6 +1444,8 @@ Value.prototype.update = function(ast){
 		default:
 			break;
 	}
+	// set buildin
+
 }
 // add a prefix to avoid confict with native property like toString
 Value.prototype._prefix = "p_";
@@ -1377,6 +1477,11 @@ Value.prototype.set = function(key, val){
 	}else{
 		this.props[ this.withPrefix(key) ] = val;
 	}
+	// @read-only
+	val.name = key;
+	// @read-only
+	val.parent = this;
+
 	return val;
 }
 // access an property of object by access path 
@@ -1438,7 +1543,7 @@ Value.prototype.solveAccessPath = function(accessPath){
 	if(accessPath && accessPath.length ){
 
 		accessPath.forEach(function(item, idx){
-			// accessPath is sovled already
+			// accessPath is solved already
 			if( ! isObject(accessPath[0]) ){
 				ret[idx] = item;
 				return;
@@ -1566,7 +1671,25 @@ Value.prototype.getPropertyDerivedAst = function(){
 }
 Value.prototype.reduce = function(){
 }
-
+// traverse property
+Value.prototype.eachProperty = function(callback){
+	for(var name in this.props){
+		var prop = this.props[name];
+		if( prop ){
+			callback && callback( prop, this.withoutPrefix(name) );
+		}
+	}
+}
+// pending, change the name when passing the value to an other variable ??
+Value.prototype.getAccessPath = function(){
+	var val = this;
+	var path = val.name;
+	while(val.parent){
+		path = val.parent.name + "." + path;
+		val = val.parent;
+	}
+	return path;
+}
 //------------------
 // static method
 Value.getDerivedAst = function( ast ){
@@ -1592,6 +1715,18 @@ Value.getDerivedAst = function( ast ){
 	}, true);
 	return derivedAst;
 }
+
+//----------------
+// a snapshot of value
+var Snapshot = function( value ){
+
+	Value.call( this, value.getDerivedAst(), value.scope );
+	this.name = value.name;
+
+}
+
+Snapshot.prototype = Value.prototype;
+
 // -------------------------------
 // value is an expression
 // for example:
@@ -1656,15 +1791,18 @@ ExpressionValue.prototype = {
 	callExpressionDerivation : function(node, getWorkListFilter){
 
 		var closureScope = node.scope;
-
+		var callee = node["callee"];
 		//find callee
-		if( node["callee"].type == "FunctionExpression" ){	//anoymous function
+		if( callee.reference && callee.reference.type == "function"){
+			var func = callee.reference;
+		}
+		else if( callee.type == "FunctionExpression" ){	//anoymous function
 
 			var variable = new Variable("__anoymous__", closureScope);
-			var assignStat = variable.assign(node["callee"], 0 );
+			var assignStat = variable.assign(callee, 0 );
 			var func = assignStat.value;
 		}else{
-			var func = this.scope.inferenceValue(node["callee"], this.scope.offsetLoc(node.loc.start) );
+			var func = this.scope.inferenceValue(callee, this.scope.offsetLoc(node.loc.start) );
 			
 			if( ! func || func.type != "function"){
 				return;
@@ -1706,6 +1844,7 @@ ExpressionValue.prototype = {
 	reduce : function(){
 		
 		var me = this;
+
 		//use post order traverse
 		walk(this.ast, function(node){
 			return true;
@@ -1724,7 +1863,7 @@ ExpressionValue.prototype = {
 					node.reference = new Value(res, me.scope);
 				}
 			}
-		}, isObjectOrFunctionOrLiteral);
+		}, true);
 
 		this.update( Value.getDerivedAst(this.ast) );
 	}
@@ -1756,8 +1895,8 @@ ExpressionValue.removeReduceOperation = function(nodeType, func){
 var _register = ExpressionValue.registerReduceOperation;
 
 _register("BinaryExpression", function(node){
-	var left = node.left,
-		right = node.right;
+	var left = Value.getDerivedAst(node.left),
+		right = Value.getDerivedAst(node.right);
 
 	if( ! (left.type == "Literal" && right.type == "Literal") ){
 		return;
@@ -1777,12 +1916,16 @@ _register("BinaryExpression", function(node){
 		case "|":
 			return TEMPLATE_LITERAL_EXPRESSION(left.value | right.value);
 		case "==":
+			return TEMPLATE_LITERAL_EXPRESSION(left.value == right.value);
 			//todo
 		case "===":
+			return TEMPLATE_LITERAL_EXPRESSION(left.value ===right.value);
 			//todo
 		case "!=":
+			return TEMPLATE_LITERAL_EXPRESSION(left.value != right.value);
 			//todo
 		case "!==":
+			return TEMPLATE_LITERAL_EXPRESSION(left.value !== right.value);
 			//todo
 	}
 })
@@ -1807,8 +1950,8 @@ _register("UnaryExpression", function(node){
 })
 
 _register("LogicalExpression", function(node){
-	var left = node.left,
-		right = node.right;
+	var left = Value.getDerivedAst(node.left),
+		right = Value.getDerivedAst(node.right);
 
 	switch(node.operator){
 		case "&&":
@@ -1856,7 +1999,7 @@ FunctionValue.prototype = {
 	_passedInVar : {},
 
 	// arguments is an array of ast object
-	setClosure : function(thisObj, _arguments){
+	setClosure : function(thisObj, _arguments, scope){
 		var bodyScope = this.ast.body.scope;
 
 		this._passedInVar = {};
@@ -1869,8 +2012,11 @@ FunctionValue.prototype = {
 				this._passedInVar["this"] = thisObj.targetVariable;
 
 				var node = new AssignStatement(null, null);
-				node.setValue(thisObj);
+				// this will set scope of all the properties to bodyScope
+				// and it will be reset after the end of the execution
+				// pending : may have problem here 
 				bodyScope.getClosure("this").addNode(node, 0);
+				node.attachValue(thisObj, true);
 			}
 			// prepare arguments passed into the function
 			for( var i = 0; i < params.length; i++){
@@ -1879,13 +2025,13 @@ FunctionValue.prototype = {
 
 				var argExpr = _arguments[i];
 				if( argExpr ){
-					var value = this.scope.inferenceValue( Value.getDerivedAst(argExpr), this.scope.offsetLoc( argExpr.loc.start) );
+					var value = scope.inferenceValue( argExpr, scope.offsetLoc( argExpr.loc.start) );
 					if( value ){
 						this._passedInVar[paramName] = value.targetVariable;
 
 						var node = new AssignStatement(null, null);
-						node.setValue(value);
 						variable.addNode(node, 0);
+						node.attachValue( value, true);
 					}else{
 						// some other expressions, like LiteralExpression
 						// directly use the expr;
@@ -1902,6 +2048,19 @@ FunctionValue.prototype = {
 		bodyScope._caller = caller;
 		bodyScope._callloc = callloc;
 	},
+	initializeContext : function( callExprAst, scope ){
+
+		var bodyScope = this.ast.body.scope;
+		if( callExprAst["type"] == "NewExpression" ){
+			// create a new object value
+			var thisObj = new Value(TEMPLATE_OBJECT_EXPRESSION(), scope);
+		}else{
+			// assume the func is called by its host object;
+			var thisObj = this.parent || exports.windowObj;
+		}
+		bodyScope.clear();
+		this.setClosure(thisObj, callExprAst["arguments"], scope);
+	},
 	// -scope the caller scope
 	execute : function(callExprAst, scope, getWorkListFilter /*optional*/){
 		if( ! this.ast.body){
@@ -1913,29 +2072,23 @@ FunctionValue.prototype = {
 			return;
 		}
 
+		this.initializeContext( callExprAst, scope );
+
 		var bodyScope = this.ast.body.scope;
-		if( callExprAst["type"] == "NewExpression" ){
-			// create a new object value
-			var thisObj = new Value(TEMPLATE_OBJECT_EXPRESSION(), scope);
-		}else{
-			// assume the func is called by its host object;
-			var thisObj = this.parent || exports.windowObj;
-		}
-		bodyScope.clear();
-		this.setClosure(thisObj, callExprAst["arguments"]);
+
 		this.setCaller(scope, scope.offsetLoc(callExprAst.loc.start));
 		bodyScope.initialize();
 
-		if( bodyScope ){
+		bodyScope.derivation( getWorkListFilter );
 
-			bodyScope.derivation( getWorkListFilter );
-		}
+		FunctionValue.execAsBuildin( this );
 
 		this.applyModify();
 
 		var ret = bodyScope.getReturn();
 		return ret;
 	},
+
 	// apply the modify of value changed in the function execution
 	applyModify : function(){
 		var bodyScope = this.ast.body.scope;
@@ -2006,26 +2159,96 @@ FunctionValue.prototype = {
 		return false;
 	}
 }
+FunctionValue.asBuildin = function(accessPath, exec){
+	_buildins[ accessPath ] = exec;
+}
+FunctionValue.execAsBuildin = function( value ){
+	var buildin = _buildins[ value.getAccessPath() ];
+	if( buildin ){
+		buildin.call( value );
+	}
+}
+var _buildins = {}
 
 //============================================
 // Statement 
 // If Statement WhileStatement
 //============================================
-var IfStatement = function(parent){
+var ConditionalStatement = function(parent){
 
 	this._expressions = [];
 
 	if( parent ){
 		this.parent = parent;
+		parent.children.push( this );
 	}
+
+	this.alternate = null;
+
+	this.children = [];
+
+	this.start = this.end = 0;
 }
 
-IfStatement.prototype.or = function( expression ){
+ConditionalStatement.prototype.inBranch = function( loc ){
+	if( ! loc ){
+		return;
+	}
+	var ret = null;
+	if( loc < this.end && loc > this.start){
+		ret = this;
+	}
+	// find the deepest branch
+	this.children.forEach(function( branch ){
+		var ret2 = branch.inBranch( loc );
+		if( ret2 ){
+			ret = ret2;
+		}
+	})
+	return ret;
+}
+
+ConditionalStatement.prototype.or = function( expression ){
 
 	this._expressions.push( expression );
 }
 
-IfStatement.prototype.getFlattenExpression = function(){
+ConditionalStatement.prototype.derivation = function(){
+
+	this._expressions.forEach(function( expr, idx ){
+		var value = new Value( expr, expr.scope );
+		value.derivation();
+		value.reduce();
+		expr = value.getDerivedAst();
+		this._expressions[ idx ] = expr;
+	}, this)
+
+	this.parent && this.parent.derivation();
+}
+
+ConditionalStatement.prototype.test = function(){
+	var res = false;
+	this._expressions.forEach(function( expr, idx ){
+		if( expr.type == "Literal"){
+			res = expr.value ? true : false;
+		}
+		else{	//suppose it is true
+			res = true;
+		}
+	}, this)
+	if( this.parent ){
+		res = this.parent.test() && res;
+	}
+	if( ! res && this.alternate ){
+		// switch to alternate branch
+		this.alternate.test = function(){
+			return true;
+		}
+	}
+	return res;
+}
+
+ConditionalStatement.prototype.getFlattenExpression = function(){
 	var code = "0";
 	this._expressions.forEach(function(expr){
 		code += " || "+ gencode(expr);
@@ -2036,9 +2259,6 @@ IfStatement.prototype.getFlattenExpression = function(){
 	return code;
 }
 
-IfStatement.prototype.derivation = function( scope ){
-
-}
 //=============================================
 // Build a scope tree from given ast
 //=============================================
@@ -2199,12 +2419,13 @@ function getReference(node){
 // use a variable as library
 function asLibrary(variable){
 	var node = new AssignStatement();
-	node.setValue( variable.inference() );
+	node.attachValue( variable.inference() );
 	var newVar = new Variable(variable.name, variable.scope);
 	newVar.addNode(node, -1);	//libaray use a negative location
 	newVar.scope.setDefine(variable.name, variable);
 	return newVar;
 }
+
 //=========================================
 // exports method
 //=========================================
@@ -2215,7 +2436,9 @@ exports.Variable 		= Variable;
 exports.AssignStatement = AssignStatement;
 exports.UseStatement 	= UseStatement;
 exports.Value 			= Value;
+exports.Snapshot 		= Snapshot;
 exports.ExpressionValue = ExpressionValue;
+exports.FunctionValue	= FunctionValue;
 exports.log 			= log;
 exports.flushlog		= flushlog;
 exports.enableLog		= true;
@@ -2237,5 +2460,5 @@ var windowAst = TEMPLATE_OBJECT_EXPRESSION();
 windowAst.scope = globalScope;
 windowVariable.assign(windowAst, 0);
 
-exports.windowObj= windowVariable.inference();
+exports.windowObj	= windowVariable.inference();
 exports.globalScope = globalScope;
