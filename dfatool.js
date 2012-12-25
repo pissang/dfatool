@@ -5,8 +5,17 @@
 // author Yi Shen(bm2736892@gmail.com)
 //====================================
 
-var codegen = require("escodegen");
-var fs = require("fs");
+(function(){
+
+// in the node environment
+if( typeof require != "undefined" ){
+	var codegen = require("escodegen");
+	var fs = require("fs");
+}
+// in the browser environment
+else{
+	var codegen = this["escodegen"];
+}
 
 var TEMPLATE_BLOCK = function(body){
 	return {
@@ -32,12 +41,19 @@ var TEMPLATE_FUNCTION_DECLARATION = function(id, params, body){
 		"expression" : false
 	}
 }
-var TEMPLATE_ASSIGNMENT_STATEMENT = function(left, right, operator){
+var TEMPLATE_ASSIGNMENT_EXPRESSION = function(left, right, operator){
 	return {
-		"type" : "AssignStatement",
+		"type" : "AssignmentExpression",
 		"left" : left || TEMPLATE_IDENTIFIER(),
 		"right" : right || TEMPLATE_IDENTIFIER(),
 		"operator" : operator || "="
+	}
+}
+
+var TEMPLATE_EXPRESSION_STATEMENT = function(expression){
+	return {
+		"type" : "ExpressionStatement",
+		"expression" : expression
 	}
 }
 
@@ -78,8 +94,32 @@ var TEMPLATE_BINARY_EXPRESSION = function(operator, left, right){
 		"right" : right
 	}
 }
-var TEMPLATE_UNARY_EXPRESSION = function(arg){
+var TEMPLATE_UNARY_EXPRESSION = function(operator, argument){
 
+	return {
+		"type" : "UnaryExpression",
+		"operator" : operator,
+		"argument" : argument
+	}
+}
+var TEMPLATE_IF_STATEMENT = function( test, consequent, alternate){
+	return {
+		"type" : "IfStatement",
+		"test" : test,
+		"consequent" : consequent,
+		"alternate" : alternate 
+	}
+}
+
+var TEMPLATE_MEMBER_EXPRESSION = function(object, property, computed){
+	computed = isUndefined( computed ) ? true : computed;
+
+	return {
+		"type" : "MemberExpression",
+		"object" : object,
+		"property" : property,
+		"computed" : computed
+	}
 }
 //=====================================
 // abstract syntax tree traverse (none-recursive)
@@ -294,9 +334,6 @@ function walk(root, before, after, isReplaceReference){
 	function next(){
 		var parent = _stack[_stack.length-1];
 		if( parent ){
-			if( ! parent.__children__ ){
-				console.log("okk");
-			}
 			var sibling = parent.__children__[ ++parent.__childidx__ ];
 			if( ! sibling ){
 				// back to parent
@@ -809,14 +846,15 @@ Scope.prototype.initialize = function(){
 					var consequent = new ConditionalStatement( currentBranch );
 					consequent.start = scope.offsetLoc( node["consequent"].loc.start );
 					consequent.end = scope.offsetLoc( node["consequent"].loc.end );
-					consequent.or( node["test"] );
+					consequent.and( node["test"] );
 
 					initializeInBranch( node["consequent"], consequent );
 					if( node["alternate"] ){
 						var alternate = new ConditionalStatement( currentBranch );
+						alternate.consequent = consequent;
+						consequent.alternate = alternate;
 						alternate.start = scope.offsetLoc( node["alternate"].loc.start );
 						alternate.end = scope.offsetLoc( node["alternate"].loc.end );
-						consequent.alternate = alternate;
 						initializeInBranch( node["alternate"], alternate);
 					}
 					return false;
@@ -831,7 +869,7 @@ Scope.prototype.initialize = function(){
 						test.loc = _case.test.loc;
 						test.scope = scope;
 						var consequent = new ConditionalStatement( currentBranch );
-						consequent.or(test);
+						consequent.and(test);
 						consequent.start = scope.offsetLoc( _case.loc.start );
 						consequent.end = scope.offsetLoc( _case.loc.end );
 
@@ -1946,6 +1984,9 @@ _register("UnaryExpression", function(node){
 		else if( arg.operator == "+"){
 			return TEMPLATE_LITERAL_EXPRESSION(left.value);
 		}
+		if( arg.operator == "!"){
+			return TEMPLATE_LITERAL_EXPRESSION( ! left.value);
+		}
 	}
 })
 
@@ -2176,19 +2217,26 @@ var _buildins = {}
 //============================================
 var ConditionalStatement = function(parent){
 
-	this._expressions = [];
+	this.id = ConditionalStatement.generateID();
+
+	this._expression = null;
 
 	if( parent ){
 		this.parent = parent;
 		parent.children.push( this );
 	}
-
+	// the relevant alternate branch when this is a consequent branch
 	this.alternate = null;
+	// the relevant consequent branch when this is a alternate branch
+	this.consequent = null;
 
 	this.children = [];
 
 	this.start = this.end = 0;
+
 }
+
+ConditionalStatement.generateID = createIDGenerator();
 
 ConditionalStatement.prototype.inBranch = function( loc ){
 	if( ! loc ){
@@ -2208,34 +2256,38 @@ ConditionalStatement.prototype.inBranch = function( loc ){
 	return ret;
 }
 
-ConditionalStatement.prototype.or = function( expression ){
+ConditionalStatement.prototype.and = function( expression ){
 
-	this._expressions.push( expression );
+	this._expression = expression;
 }
 
 ConditionalStatement.prototype.derivation = function(){
+	if( ! this._expression){
+		return;
+	}
 
-	this._expressions.forEach(function( expr, idx ){
-		var value = new Value( expr, expr.scope );
-		value.derivation();
-		value.reduce();
-		expr = value.getDerivedAst();
-		this._expressions[ idx ] = expr;
-	}, this)
+	var value = new Value( this._expression, this._expression.scope );
+	value.derivation();
+	value.reduce();
 
 	this.parent && this.parent.derivation();
 }
 
-ConditionalStatement.prototype.test = function(){
-	var res = false;
-	this._expressions.forEach(function( expr, idx ){
-		if( expr.type == "Literal"){
-			res = expr.value ? true : false;
-		}
-		else{	//suppose it is true
-			res = true;
-		}
-	}, this)
+ConditionalStatement.prototype.test = function( ){
+	if( ! this._expression){
+		return;
+	}
+
+	var res,
+		expr = Value.getDerivedAst(this._expression);
+
+	if( expr.type == "Literal"){
+		res = expr.value ? true : false;
+	}
+	else{	//suppose it is true
+		res = true;
+	}
+
 	if( this.parent ){
 		res = this.parent.test() && res;
 	}
@@ -2249,16 +2301,197 @@ ConditionalStatement.prototype.test = function(){
 }
 
 ConditionalStatement.prototype.getFlattenExpression = function(){
-	var code = "0";
-	this._expressions.forEach(function(expr){
-		code += " || "+ gencode(expr);
-	})
+	var expr = this._expression ? this._expression :
+				TEMPLATE_UNARY_EXPRESSION("!", this.consequent._expression);
+
+	var code = gencode( expr );
 	if( this.parent ){
-		code += " && " + this.parent.getFlattenExpression();
+		code = this.parent.getFlattenExpression() + "&&" + code;
 	}
 	return code;
 }
 
+var ConditionalTree = function( variable, scope ){
+
+	this.root = new ConditionalTree.Node;
+
+	this.build( variable, scope );
+
+	this.variable = variable;
+
+	this.scope = scope;
+}
+//=====================================
+// Conditional Tree
+//=====================================
+ConditionalTree.prototype.build = function( variable, scope ){
+
+	if( scope == variable.scope ){
+		var chain = variable._chain
+	}else{
+		var modified = scope.getModified(variable.name);
+		if(modified){
+			var chain = modified._chain;
+		}else{
+			return;
+		}
+	}
+
+	chain.filter(function(item){
+		return item.conditionalStatement && item.conditionalStatement._expression;
+	}).forEach(function( item ){
+		if( ! item.conditionalStatement.parent ){
+			var node = new ConditionalTree.Node(item.conditionalStatement);
+			this.root.consequent.push( node );
+		}
+	}, this);
+	chain.forEach(function(item){
+		var state = item.conditionalStatement;
+		if( ! state ){	// root
+			this.root.consequent.push( item );
+		}else{
+
+			if( state.consequent ){	// alternate branch
+				var node = this.findNode( state.consequent );
+				if( ! node){
+					return;
+				}
+				node.alternate.push( item );
+			}else{	// consequent branch
+				var node = this.findNode( state );
+				if( ! node){
+					return;
+				}
+				node.consequent.push( item );
+			}
+		}
+	}, this)
+	this.root.sort();
+}
+ConditionalTree.prototype.findNode = function( conditionalStatement ){
+	var path = [];
+	var statement = conditionalStatement;
+	while(statement){
+		path.unshift(statement);
+		statement = statement.parent;
+	}
+	var me = this;
+	return path.reduce(function(node, state){
+		if( ! node){
+			return;
+		}
+		if( state.consequent ){	// alternate branch
+			state = state.consequent;
+		}
+		var child = node.consequent.filter(function(_n){ return _n._condid == state.id;} )[0];
+		if( ! child ){
+			child = node.alternate.filter(function(_n){ return _n._condid == state.id;} )[0];
+		}
+		return child;
+	}, this.root);
+}
+ConditionalTree.prototype.buildAST = function(){
+	return this.root.buildAST( this.variable.name );
+}
+ConditionalTree.Node = function( statement ){
+
+	this._condid = -1;
+	// {{ConditionalStatement}}
+	this._expression = null;
+	// {ConditionalTree.Node || AssignStatement || UseStatement}
+	this.consequent = [];
+	this.alternate = [];
+
+	this.parent = null;
+
+	if( statement ){
+		this.build( statement );
+		this._condid = statement.id;
+	}
+}
+ConditionalTree.Node.prototype.sort = function(){
+	this.consequent.sort(function(a, b){
+		return a.loc - b.loc;
+	})
+	this.alternate.sort(function(a, b){
+		return a.loc - b.loc;
+	})
+
+	this.consequent.forEach(function(node){
+		if( node instanceof ConditionalTree.Node){
+			node.sort();
+		}
+	})
+	this.alternate.forEach(function(node){
+		if( node instanceof ConditionalTree.Node){
+			node.sort();
+		}
+	})
+}
+ConditionalTree.Node.prototype.build = function( statement ){
+
+	if( ! statement._expression){
+		return;
+	}
+
+	this._expression = statement._expression;
+	this.loc = statement.start;
+	
+	// consequent branch
+	statement.children.forEach( function(child){
+		if( child._expression){
+			this.consequent.push( new ConditionalTree.Node(child) );
+		}
+	}, this );
+	// alternate branch
+	if( statement.alternate ){
+		statement.alternate.children.forEach( function(child){
+			if( child._expression ){
+				this.alternate.push( new ConditionalTree.Node(child) );
+			}
+		}, this);
+	}
+}
+ConditionalTree.Node.prototype.buildAST = function( varName ){
+	var consequent = TEMPLATE_BLOCK();
+	this.consequent.forEach( function( node ){
+		consequent.body.push( buildAST(node) );
+	} );
+	if( this.alternate.length ){
+		var alternate = TEMPLATE_BLOCK();
+		this.alternate.forEach( function( node ){
+			alternate.body.push( buildAST(node) );
+		} );
+	}else{
+		var alternate = null;
+	}
+	if( this._expression ){	//
+		return TEMPLATE_IF_STATEMENT( this._expression, consequent, alternate);
+	}else{	//is root node
+		return consequent;
+	}
+
+	function buildAST(node){
+		if( node instanceof ConditionalTree.Node ){
+			var ast = node.buildAST( varName );
+		}else if(node instanceof AssignStatement){
+			if( ! node.accessPath || ! node.accessPath.length ){
+				var ast = TEMPLATE_ASSIGNMENT_EXPRESSION( TEMPLATE_IDENTIFIER( varName), node.value.ast );
+				ast = TEMPLATE_EXPRESSION_STATEMENT( ast );
+			}else{
+				var ast = TEMPLATE_MEMBER_EXPRESSION(TEMPLATE_IDENTIFIER( varName ), node.accessPath[0] );
+				for(var i = 1; i < node.accessPath.length; i++){
+					ast = TEMPLATE_MEMBER_EXPRESSION( ast, node.accessPath[i] );
+				}
+				ast = TEMPLATE_ASSIGNMENT_EXPRESSION( ast, node.value.ast );
+				ast = TEMPLATE_EXPRESSION_STATEMENT( ast );
+			}
+		}else{
+			var ast = TEMPLATE_EXPRESSION_STATEMENT( node.expression );
+		}
+		return ast;
+	}
+}
 //=============================================
 // Build a scope tree from given ast
 //=============================================
@@ -2331,6 +2564,9 @@ function isArray(obj){
 function isUndefined(obj){
 	return obj === void 0;
 }
+function last(arr){
+	return arr[ arr.length-1];
+}
 function extend(obj){
 	Array.prototype.slice.call(arguments, 1).forEach(function(source) {
     	for (var prop in source) {
@@ -2341,7 +2577,11 @@ function extend(obj){
 }
 
 function gencode(ast){
-	return codegen.generate( ast );
+	if( codegen ){
+		return codegen.generate( ast );
+	}else{
+		return " escodegen is required (https://github.com/Constellation/escodegen)";
+	}
 }
 
 var _logcache = [];
@@ -2364,16 +2604,18 @@ function log(msg, expression){
 }
 
 function flushlog(filename, callback){
-	var str = _logcache.join('\n');
-	var filename = filename || "log.txt";
-	if( isFunction(filename) ){
-		callback = filename;
-		filename = "log.txt";
+	if( ! isUndefined ){
+		var str = _logcache.join('\n');
+		var filename = filename || "log.txt";
+		if( isFunction(filename) ){
+			callback = filename;
+			filename = "log.txt";
+		}
+		fs.writeFile(filename, str, function(err){
+			callback && callback();
+		})
+		_logcache = [];
 	}
-	fs.writeFile(filename, str, function(err){
-		callback && callback();
-	})
-	_logcache = [];
 }
 
 function withPrefix(propName){
@@ -2429,20 +2671,29 @@ function asLibrary(variable){
 //=========================================
 // exports method
 //=========================================
-exports.walk 			= walk;
-exports.buildScope 		= buildScope;
-exports.Scope 			= Scope;
-exports.Variable 		= Variable;
-exports.AssignStatement = AssignStatement;
-exports.UseStatement 	= UseStatement;
-exports.Value 			= Value;
-exports.Snapshot 		= Snapshot;
-exports.ExpressionValue = ExpressionValue;
-exports.FunctionValue	= FunctionValue;
-exports.log 			= log;
-exports.flushlog		= flushlog;
-exports.enableLog		= true;
-exports.asLibrary		= asLibrary;
+if( typeof module == "undefined" ){
+	var exports = {};
+	this.dfatool = exports;
+}else{
+	var exports = module.exports;
+}
+
+exports.walk 				= walk;
+exports.buildScope 			= buildScope;
+exports.Scope 				= Scope;
+exports.Variable 			= Variable;
+exports.AssignStatement 	= AssignStatement;
+exports.UseStatement 		= UseStatement;
+exports.Value 				= Value;
+exports.Snapshot 			= Snapshot;
+exports.ExpressionValue 	= ExpressionValue;
+exports.FunctionValue		= FunctionValue;
+exports.log 				= log;
+exports.flushlog			= flushlog;
+exports.enableLog			= true;
+exports.asLibrary			= asLibrary;
+exports.conditionalStatement= ConditionalStatement;
+exports.ConditionalTree		= ConditionalTree;
 
 exports.getDefaultWorklistFilter = function(scope){
 	return exports.defaultWorklistFilter;
@@ -2453,12 +2704,13 @@ exports.defaultWorklistFilter = function(derivableItem){
 	return true;
 }
 
-//
 var globalScope = new Scope();
 var windowVariable = globalScope.define("window");
 var windowAst = TEMPLATE_OBJECT_EXPRESSION();
 windowAst.scope = globalScope;
 windowVariable.assign(windowAst, 0);
 
-exports.windowObj	= windowVariable.inference();
-exports.globalScope = globalScope;
+exports.windowObj			= windowVariable.inference();
+exports.globalScope 		= globalScope;
+
+}).call(this);
