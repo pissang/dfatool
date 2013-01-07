@@ -123,7 +123,7 @@ var TEMPLATE_MEMBER_EXPRESSION = function(object, property, computed){
 }
 //=====================================
 // abstract syntax tree traverse (none-recursive)
-// it is easily to have stack overflow when traverse the ast recursively
+// it is easily to have stack overflow if traverse the ast recursively
 // -before is for pre-order traverse
 // -after is for post-order traverse
 // -isReplaceReference {Boolean|Function}
@@ -457,6 +457,11 @@ var Scope = function(parent){
 	//		})(window)
 	this._anoymousStatements = [];
 
+	// UseStatement with unkown variable, maybe some object in a library or native function,
+	// but we cant find it in the scope chain, in this case, we will put the statement
+	// in this pendingStatments;
+	this._pendingStatements = [];
+
 	this._return = new Variable("return", this);
 
 }
@@ -559,29 +564,33 @@ Scope.prototype.assign = function(lhs, rhs, loc){
 // for call expression module.foo(), accessExpr is module.foo, useExpr is whole module.foo()
 Scope.prototype.use = function(accessExpr, useExpr, loc){
 	var res = this.inferenceVariable( accessExpr );
-	if( res ){
+
+	if( ! (res && res.variable) ){
+		// put the use statement of a unkown variable in the _pendingStatements
+		var anoymousStatement = new UseStatement(useExpr, this);
+		this._pendingStatements.push(anoymousStatement);
+	}
+	else{
 
 		var variable = res.variable;
-		if( variable){
-			var identifier = variable.name;
 
-			if( variable.name == "__anoymous__"){
-				var anoymousStatement = new UseStatement(useExpr, this);
-				this._anoymousStatements.push(anoymousStatement);
-			}else if( variable.scope == this ){	// in scope
-				return variable.use( useExpr, loc);
-			}else if( this.inScope(variable.scope) ){
-				var modified = this.getModified(identifier);
-				if( ! modified ){
-					var modified = this.modify( identifier, new Modified(identifier, variable.scope, this) );
-				}
-				return modified.use( useExpr, loc );
-			}else{
-				var anoymousStatement = new UseStatement(useExpr, this);
-				this._anoymousStatements.push(anoymousStatement);
+		var identifier = variable.name;
+
+		if( variable.name == "__anoymous__"){
+			var anoymousStatement = new UseStatement(useExpr, this);
+			this._anoymousStatements.push(anoymousStatement);
+		}else if( variable.scope == this ){	// in scope
+			return variable.use( useExpr, loc);
+		}else if( this.inScope(variable.scope) ){
+			var modified = this.getModified(identifier);
+			if( ! modified ){
+				var modified = this.modify( identifier, new Modified(identifier, variable.scope, this) );
 			}
-
+			return modified.use( useExpr, loc );
+		}else{
+			// todo:what about this?
 		}
+
 	}
 
 }
@@ -974,7 +983,7 @@ Scope.prototype.offsetLoc = function(loc){
 
 function calculateLoc( loc ){
 
-	return loc.line + loc.column / 200;
+	return loc.line + loc.column / 1000;
 
 }
 
@@ -1403,7 +1412,7 @@ var Value = function(ast, scope){
 	// if the value has other properties
 	// the value will be force convert to an object type value 
 	this.props = {
-		'prototype' : null	// prototype is null or a value(or other object with a get method)
+		'__protot__' : null
 	}
 
 	if(ast){
@@ -1502,8 +1511,8 @@ Value.prototype.get = function(key){
 		return props[ this.withPrefix(key) ];
 	}
 	// look up in the prototype chain
-	else if(props["prototype"] && props["prototype"].get){
-		return props["prototype"].get(key);
+	else if(props["__protot__"] && props["__protot__"].get){
+		return props["__protot__"].get(key);
 	}
 
 }
@@ -1555,7 +1564,9 @@ Value.prototype.access = function(accessPathArr, value /*optional*/){
 	var deepestPropName = accessPathArr.pop();
 	var prop = accessPathArr.reduce(function(prop, key){
 		if( prop && prop.get ){
-			if( key == "prototype" && ! prop.get("prototype") ){
+			if( prop.type == "function" &&	//only function value has a prototype property
+				key == "prototype" && 
+				! prop.get("prototype") ){
 				// give an empty prototype
 				prop["prototype"] = new Value(TEMPLATE_OBJECT_EXPRESSION(), prop.scope);
 			}
@@ -1600,25 +1611,40 @@ Value.prototype.solveAccessPath = function(accessPath){
 Value.prototype.toJSON = function(){
 
 	var properties = {},
-		hasProperty = false;
+		type = this.type,
+		valName = this.name,
+		accessPath = this.getAccessPath();
+
+	function withProperties(key, val){
+		var ret = {
+			name : valName,
+			type : type,
+			accessPath : accessPath,
+			properties : properties
+		}
+		if( key != "properties"){
+			ret[key] = val;
+		}
+		return ret;
+	}
+
 	for( var name in this.props){
 		var prop = this.props[name];
 		if( prop ){
-			hasProperty = true;
 			properties[ this.withoutPrefix(name) ] = prop.toJSON();
 		}
 	}
-	if( this.type == "object"){
-		return properties;
+	if( type == "object"){
+		return withProperties( "properties" );
 	}
-	else if(this.type == "array"){
+	else if(type == "array"){
 		var elements = [];
 		this.elements.forEach(function(value){
 			elements.push(value.toJSON());
 		})
 		return withProperties("elements", elements);
 	}
-	else if(this.type == "expression"){
+	else if(type == "expression"){
 		return withProperties("expression", gencode( this.getDerivedAst() ) );
 	}
 	else if(this.value){
@@ -1626,16 +1652,6 @@ Value.prototype.toJSON = function(){
 	}
 	else{
 		log('Unknown Type:'+this.ast.type, this.ast);
-	}
-	function withProperties(key, val){
-		if( ! hasProperty){
-			return val;
-		}
-		var ret = {
-			properties : properties
-		}
-		ret[key] = val;
-		return ret;
 	}
 
 }
@@ -1949,22 +1965,20 @@ _register("BinaryExpression", function(node){
 			return TEMPLATE_LITERAL_EXPRESSION(left.value * right.value);
 		case "/":
 			return TEMPLATE_LITERAL_EXPRESSION(left.value / right.value);
+		case "%":
+			return TEMPLATE_LITERAL_EXPRESSION(left.value % right.value);
 		case "&":
 			return TEMPLATE_LITERAL_EXPRESSION(left.value & right.value);
 		case "|":
 			return TEMPLATE_LITERAL_EXPRESSION(left.value | right.value);
 		case "==":
 			return TEMPLATE_LITERAL_EXPRESSION(left.value == right.value);
-			//todo
 		case "===":
 			return TEMPLATE_LITERAL_EXPRESSION(left.value ===right.value);
-			//todo
 		case "!=":
 			return TEMPLATE_LITERAL_EXPRESSION(left.value != right.value);
-			//todo
 		case "!==":
 			return TEMPLATE_LITERAL_EXPRESSION(left.value !== right.value);
-			//todo
 	}
 })
 // todo
@@ -2103,6 +2117,8 @@ FunctionValue.prototype = {
 		this.setClosure(thisObj, callExprAst["arguments"], scope);
 	},
 	// -scope the caller scope
+
+	// todo: add garbage collection
 	execute : function(callExprAst, scope, getWorkListFilter /*optional*/){
 		if( ! this.ast.body){
 			return;
@@ -2200,6 +2216,7 @@ FunctionValue.prototype = {
 		return false;
 	}
 }
+// todo : add scope constraint
 FunctionValue.asBuildin = function(accessPath, exec){
 	_buildins[ accessPath ] = exec;
 }
@@ -2578,9 +2595,19 @@ function extend(obj){
 
 function gencode(ast){
 	if( codegen ){
-		return codegen.generate( ast );
+		try{
+			return codegen.generate( ast );
+		}catch(e){
+			//here need to add extra code in the escodegen
+			//	case Syntax.FunctionExpression:
+            // 		result = [(stmt.generator && !extra.moz.starlessGenerator ? 'function* ' : 'function '), generateFunctionBody(stmt)];
+            // 		break;
+            // in generateStatement function
+			log( e );
+			return "Generate code failed, "+toString.call(e);
+		}
 	}else{
-		return " escodegen is required (https://github.com/Constellation/escodegen)";
+		return " Escodegen is required to generate code (https://github.com/Constellation/escodegen)";
 	}
 }
 
