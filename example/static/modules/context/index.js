@@ -55,9 +55,13 @@ define(function(require, exports, module){
 	}
 
 	function parseCode( code ){
-		var ast = esprima.parse( code, {
-			loc :true
-		})
+		try{
+			var ast = esprima.parse( code, {
+				loc :true
+			})
+		}catch(e){
+			return;
+		}
 		globalScope = new dfatool.newGlobalScope();
 		dfatool.buildScope(ast, globalScope);
 

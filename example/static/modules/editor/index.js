@@ -55,6 +55,10 @@ define(function(require, exports, module){
 			codemirror.on("gutterClick", function(cm, line){
 				breakpointAt( line )
 			});
+			codemirror.on("change", function(cm){
+				hub.publish("parsecode", cm.getValue());
+				hub.publish("showcontext", breakpointLine)
+			})
 
 			loadTheme("monokai");
 		})
