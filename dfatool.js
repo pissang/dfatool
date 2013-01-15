@@ -2730,8 +2730,8 @@ exports.getDefaultWorklistFilter = function(scope){
 	return exports.defaultWorklistFilter;
 }
 exports.defaultWorklistFilter = function(derivableItem){
-	derivableItem.reduce();
 	derivableItem.derivation( exports.getDefaultWorklistFilter );
+	derivableItem.reduce();
 	return true;
 }
 

@@ -2,7 +2,7 @@
 
 The code analyze is based on [Parser API](https://developer.mozilla.org/en/SpiderMonkey/Parser_API) AST, which you can generated with [Esprima](esprima.org). And [Escodegen](https://github.com/Constellation/escodegen) is needed for the final output code regenerate.
 
-[Live demo](http://pissang.github.com/dfatool/example/static/)
+**[Live demo](http://pissang.github.com/dfatool/example/static/)**
 
 ### Install
 
