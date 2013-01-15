@@ -1,0 +1,104 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="chrome=1">
+    <title>dfatool by pissang</title>
+
+    <link rel="stylesheet" href="stylesheets/styles.css">
+    <link rel="stylesheet" href="stylesheets/pygment_trac.css">
+    <script src="javascripts/scale.fix.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+    <!--[if lt IE 9]>
+    <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+  </head>
+  <body>
+    <div class="wrapper">
+      <header>
+        <h1 class="header">dfatool</h1>
+        <p class="header">JavaScript Data Flow Analyze Tool</p>
+
+        <ul>
+          <li class="download"><a class="buttons" href="https://github.com/pissang/dfatool/zipball/master">Download ZIP</a></li>
+          <li class="download"><a class="buttons" href="https://github.com/pissang/dfatool/tarball/master">Download TAR</a></li>
+          <li><a class="buttons github" href="https://github.com/pissang/dfatool">View On GitHub</a></li>
+        </ul>
+
+        <p class="header">This project is maintained by <a class="header name" href="https://github.com/pissang">pissang</a></p>
+
+
+      </header>
+      <section>
+        <p><strong>dfatool.js</strong> is a data flow analyze tool for javascript code runs on node.js. </p>
+
+<p>The code analyze is based on <a href="https://developer.mozilla.org/en/SpiderMonkey/Parser_API">Parser API</a> AST, which you can generated with <a href="esprima.org">Esprima</a>. And <a href="https://github.com/Constellation/escodegen">Escodegen</a> is needed for the final output code regenerate.</p>
+
+<h3>Install</h3>
+
+<pre><code>npm install dfatool
+</code></pre>
+
+<h3>Usage</h3>
+
+<p>Use <a href="esprima.org">Esprima</a> to generate AST</p>
+
+<pre><code>var ast = esprima.parse(data, {
+    loc : true
+});
+</code></pre>
+
+<p>Build scope for the program</p>
+
+<pre><code>var globalScope = dfatool.globalScope
+dfatool.buildScope(ast, globalScope);
+</code></pre>
+
+<p>analyze the code</p>
+
+<pre><code>globalScope.initialize();
+globalScope.derivation();
+</code></pre>
+
+<p>Get the variable defined in a specific scope</p>
+
+<pre><code>var variable = scope.getDefine("variableName");
+</code></pre>
+
+<p>Inference the variable's value in a specific position of program</p>
+
+<pre><code>var loc = {
+    line : 20,
+    column : 20
+};
+var value = variable.inference( scope.offsetLoc(loc) );
+</code></pre>
+
+<p>Inference the type(<code>object</code>,<code>function</code>,<code>array</code>,<code>literal</code>,<code>expression</code>)</p>
+
+<pre><code>var type = value.type
+</code></pre>
+
+<p>Read property of the value( support prototype chain look up)</p>
+
+<pre><code>var property = value.access("propName.propName");
+</code></pre>
+
+<p>If the value is an array</p>
+
+<pre><code>var elem = value.access(10);
+</code></pre>
+
+<p>If the value is an function, you can simulate an function call</p>
+
+<pre><code>var returnedVariable = value.execute(callExprAST, scope);
+</code></pre>
+      </section>
+      <footer>
+        <p><small>Hosted on <a href="https://pages.github.com">GitHub Pages</a> using the Dinky theme</small></p>
+      </footer>
+    </div>
+    <!--[if !IE]><script>fixScale(document);</script><![endif]-->
+		
+  </body>
+</html>
