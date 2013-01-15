@@ -1,0 +1,13 @@
+<h2>ECOMFE GALLERY</h2>
+<div id="UserInfo">
+	<span class="avatar" data-bind="style:{backgroundImage:avatarBG}"></span>
+	<span class="realname" data-bind="text:realname"></span>
+</div>
+<ul>
+	<li class="active view">
+		<a href="#/view">所有图片</a>
+	</li>
+	<li class="upload">
+		<a href="#/upload">上传图片</a>
+	</li>
+</ul>

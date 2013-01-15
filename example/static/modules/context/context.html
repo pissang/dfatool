@@ -1,0 +1,21 @@
+<!--context-->
+<div class="local-variables block">
+	<ul data-bind="foreach:localVariables">
+		<li>
+			<a data-bind="text:name"></a>
+			<div class="detail" data-bind="if:value">
+				<div>
+					type : 
+					<span data-bind="text:value.type"></span>
+				</div>
+				<div>
+					value : 
+					<span data-bind="text:value.value"></span>
+				</div>
+			</div>
+			<div class="detail-undefined" data-bind="ifnot:value">
+				undefined
+			</div>
+		</li>
+	</ul>
+</div>
