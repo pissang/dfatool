@@ -4,17 +4,25 @@
 //
 // author Yi Shen(bm2736892@gmail.com)
 //====================================
+ (function(factory){
+ 	// CommonJS or Node
+ 	if( typeof require == "function" && typeof exports == "object" && typeof module == "object"){
+ 		factory( require("escodegen"), exports );
+ 	}
+ 	// AMD
+ 	else if( typeof define !== "undefined" && define["amd"] ){
+ 		// harded-coded dependency on escodegen
+ 		define(["escodegen", "exports"], factory);
+ 	// No module loader
+ 	}else{
+ 		factory( window["mirror"] = {} );
+ 	}
 
-(function(){
+})(function(codegen, exports){
 
-// in the node environment
-if( typeof require != "undefined" ){
-	var codegen = require("escodegen");
+// in the Node
+if( typeof require != "undefined" && typeof exports == "object" && typeof module=="object"){
 	var fs = require("fs");
-}
-// in the browser environment
-else{
-	var codegen = this["escodegen"];
 }
 
 var TEMPLATE_BLOCK = function(body){
@@ -2564,7 +2572,9 @@ function buildScope(ast, globalScope){
 // some util methods, from underscore.js
 //=========================================
 function isFunction(obj){
-	return toString.call(obj) == "[object Function]";
+	// TODO toString.call(obj) in browser env will return [object Object]
+	// don't know why
+	return typeof obj === "function";
 }
 function isString(obj){
 	return toString.call(obj) == "[object String]";
@@ -2698,12 +2708,6 @@ function asLibrary(variable){
 //=========================================
 // exports method
 //=========================================
-if( typeof module == "undefined" ){
-	var exports = {};
-	this.dfatool = exports;
-}else{
-	var exports = module.exports;
-}
 
 exports.walk 				= walk;
 exports.buildScope 			= buildScope;
@@ -2731,13 +2735,18 @@ exports.defaultWorklistFilter = function(derivableItem){
 	return true;
 }
 
-var globalScope = new Scope();
-var windowVariable = globalScope.define("window");
-var windowAst = TEMPLATE_OBJECT_EXPRESSION();
-windowAst.scope = globalScope;
-windowVariable.assign(windowAst, 0);
+// create a new global scope and define an default window variable
+exports.newGlobalScope = function(){
+	var globalScope = new Scope();
+	var windowVariable = globalScope.define("window");
+	var windowAst = TEMPLATE_OBJECT_EXPRESSION();
+	windowAst.scope = globalScope;
+	windowVariable.assign(windowAst, 0);
+	
+	exports.windowObj = windowVariable.inference();
+	exports.globalScope = globalScope;
+	return globalScope;
+}
+exports.newGlobalScope();
 
-exports.windowObj			= windowVariable.inference();
-exports.globalScope 		= globalScope;
-
-}).call(this);
+}) // end of factory function
