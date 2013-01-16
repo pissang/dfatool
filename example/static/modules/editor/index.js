@@ -12,6 +12,7 @@ define(function(require, exports, module){
 
 	var defaultCodeHint = "//type your code here \n\
 //or select the test code on the left\n\
+//click on the gutter to add breakpoint\n\
 var foo = 20;\n\
 var bar = foo-10;\n\
 "
@@ -64,9 +65,15 @@ var bar = foo-10;\n\
 				hub.publish("parsecode", cm.getValue());
 				hub.publish("showcontext", breakpointLine)
 			})
-			codemirror.setValue(codeSv || defaultCodeHint);
-
 			loadTheme("monokai");
+
+			hub.subscribe("loaded:module", function(name){
+				if( name == "context"){
+					// reset the value after the context module loaded;
+					codemirror.setValue(codeSv || defaultCodeHint);
+				}
+			})
+			codemirror.setValue(codeSv || defaultCodeHint);
 		})
 		b_core.loadCSS( window["LIB_PATH"] + "codemirror/codemirror.css", function(style){
 			styleNode = style;

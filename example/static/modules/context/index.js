@@ -52,6 +52,8 @@ define(function(require, exports, module){
 			localVariables : ko.observableArray([])
 		}
 		ko.applyBindings(viewModel, $wrapper[0]);
+
+		hub.publish("loaded:module", "context");
 	}
 
 	function parseCode( code ){
@@ -79,13 +81,42 @@ define(function(require, exports, module){
 				line : line+1,
 				column : 0
 			}) );
-			viewModel.localVariables.push({
-				name : variable.name,
-				value : value && value.toJSON()
-			})
+			viewModel.localVariables.push( createValViewModel(variable.name, value) );
 		}
 
 		G.$app.addClass("active-sidebar");
+	}
+
+	function createValViewModel(name, val){
+		var valVM = {
+			name : name,
+			isUndefined : val ? false : true,
+			val : ko.observable(val.toJSON())
+		}
+		valVM.type = ko.computed(function(){
+			var value = this.val();
+			if( value.type == "literal"){
+				return value.type;
+			}else{
+				return value.type;
+			}
+		}, valVM);
+		valVM.value = ko.computed(function(){
+			var value = this.val();
+			if( value.type == "array"){
+				return "[...]";
+			}
+			else if( value.type == "object"){
+				return "{...}";
+			}
+			else if( value.type == "function"){
+				return "[Function]";
+			}
+			else{
+				return value.value;
+			}
+		}, valVM);
+		return valVM;
 	}
 
 	exports.load = load;

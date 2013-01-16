@@ -3,17 +3,17 @@
 	<ul data-bind="foreach:localVariables">
 		<li>
 			<a data-bind="text:name"></a>
-			<div class="detail" data-bind="if:value">
+			<div class="detail" data-bind="ifnot:isUndefined">
 				<div>
 					type : 
-					<span data-bind="text:value.type"></span>
+					<span data-bind="text:type"></span>
 				</div>
-				<div data-bind='if:value.type=="literal"'>
+				<div>
 					value :
-					<span data-bind="text:value.value"></span>
+					<span data-bind="text:value" class="value"></span>
 				</div>
 			</div>
-			<div class="detail-undefined" data-bind="ifnot:value">
+			<div class="detail-undefined" data-bind="if:isUndefined">
 				undefined
 			</div>
 		</li>
