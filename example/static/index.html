@@ -3,10 +3,47 @@
 	<head>
 		<title>dfatool</title>
 		<meta charset="utf8" />
+		<style type="text/css">
+			html{
+				height:100%;
+			}
+			body{
+				height:100%;
+				margin: 0px;
+				font-family:Tahoma,Helvetica,Arial,sans-serif;
+				font-size: 12px;
+				/*background-image:url(imgs/zigzag.png);*/
+				background-color: #1c2126;
+			}
+			#App{
+				height : 100%;
+			}
+			#Loading{
+				left:50%;
+				top:50%;
+				width:400px;
+				height:300px;
+				margin-left: -200px;
+				margin-top: -150px;
+				position: absolute;
+
+				color:white;
+				text-align: center;
+				font-size: 14px;
+			}
+		</style>
 	</head>
 	<body>
-		<div id="App"></div>
+		<div id="App">
+			<div id="Loading">
+				<img src="imgs/metaloader.gif" />
+				<p>Loading gif is from dribble<br />
+					(http://dribbble.com/shots/882638-Loader-03-WIP-Animation-GIF)</p>
+			</div>
+		</div>
+		
 		<script type="text/javascript" src="lib/LAB.js"></script>
 		<script type="text/javascript" src="boot.js"></script>
+	
 	</body>
 </html>
