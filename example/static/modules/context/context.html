@@ -8,8 +8,8 @@
 					type : 
 					<span data-bind="text:value.type"></span>
 				</div>
-				<div>
-					value : 
+				<div data-bind='if:value.type=="literal"'>
+					value :
 					<span data-bind="text:value.value"></span>
 				</div>
 			</div>

@@ -10,6 +10,12 @@ define(function(require, exports, module){
 		codeSv = "",
 		globalScope;
 
+	var defaultCodeHint = "//type your code here \n\
+//or select the test code on the left\n\
+var foo = 20;\n\
+var bar = foo-10;\n\
+"
+
 	var breakpointLine;
 
 	subscribeHubEvents();
@@ -49,7 +55,6 @@ define(function(require, exports, module){
 			codemirror = CodeMirror($wrapper.find('.editor')[0], {
 				mode : "javascript",
 				lineNumbers : true,
-				value : codeSv,
 				gutters: ["breakpoints", "CodeMirror-linenumbers"]
 			} );
 			codemirror.on("gutterClick", function(cm, line){
@@ -59,6 +64,7 @@ define(function(require, exports, module){
 				hub.publish("parsecode", cm.getValue());
 				hub.publish("showcontext", breakpointLine)
 			})
+			codemirror.setValue(codeSv || defaultCodeHint);
 
 			loadTheme("monokai");
 		})
