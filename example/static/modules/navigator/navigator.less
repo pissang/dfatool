@@ -1,0 +1,96 @@
+#Navigator{
+
+	color: white;
+	.header{
+		h2 {
+			padding-left: 20px;
+			font-size: 30px;
+			margin: 3px;
+			text-shadow: 3px 3px 10px black;
+			font-family: "Arial";
+			color: #9C4A4A;
+		}
+		p {
+			font-size: 12px;
+			text-align: right;
+			margin: 5px;
+			color: #ACACAC;
+		}
+	}
+	ul.menus{
+		box-shadow: 0px -1px 6px black;
+	}
+	ul.menus>li{
+		font-size: 16px;
+		cursor: pointer;
+		font-weight: bold;
+	}
+	ul.menus>li>a{
+		color:white;
+		line-height: 40px;
+		height:40px;
+		width:100%;
+		text-decoration: none;
+		display: block;
+		margin-bottom: 1px;
+		background-image: -webkit-linear-gradient(bottom, #5D636C 4%, #6E7680 100%);
+		background-image: -moz-linear-gradient(bottom, #5D636C 4%, #6E7680 100%);
+		text-shadow:0px 0px 3px black;
+	}
+	ul.menus>li:hover>a{
+		background-color: #494949;
+	}
+	ul.menus>li.active>a{
+		background-image: -webkit-linear-gradient(bottom, #3773b7 4%, #4e8ab7 100%);
+		background-image: -moz-linear-gradient(bottom, #3773b7 4%, #4e8ab7 100%);
+	}
+	.icon{
+		width: 30px;
+		height: 30px;
+		background-size: 30px 30px;
+		background-repeat: no-repeat;
+		background-position: 10px 50%;
+		margin-right: 5px;
+		margin-top:3px;
+	}
+
+	.icon.codechunks {
+		background-image:url(imgs/paragraph-right.svg);
+	}
+	
+	ul.submenus>li{
+		text-align: right;
+		padding-right: 10px;
+		font-weight: normal;
+		font-size: 14px;
+		border-bottom: 1px solid #1B1B1B;
+		border-top: 1px solid #383838;
+
+		background-image: -webkit-linear-gradient(bottom, #2C2C2C 4%, #313131 100%);
+		background-image: -moz-linear-gradient(bottom, #2C2C2C 4%, #313131 100%);
+	}
+	/*submenus*/
+	ul.submenus>li a{
+		color:white;
+		text-decoration: none;
+		display: block;
+		width:100%;
+		line-height: 27px;
+		-webkit-transition:padding-left 0.2s linear;
+		-moz-transition:padding-left 0.2s linear;
+		-o-transition:padding-left 0.2s linear;
+	}
+
+	ul.submenus>li a:hover{
+		// padding-left: 5px;
+	}
+
+	ul.submenus>li.active{
+		background-image: -webkit-linear-gradient(bottom, #5D636C 4%, #6E7680 100%);
+		background-image: -moz-linear-gradient(bottom, #5D636C 4%, #6E7680 100%);
+	}
+
+	ul li>a>span{
+		float: left;
+	}
+}

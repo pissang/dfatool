@@ -1,0 +1,42 @@
+define(function(require, exports, module){
+	
+	var hub = require("hub");
+	subscribeHubEvents();
+
+	var $wrapper,
+		styleNode;
+
+	function load( _$wrapper ){
+
+		$wrapper = _$wrapper;
+		
+		// load less file
+		b_core.loadLess( require.toUrl('./{{moduleName}}.less'), function(_styleNode){
+			styleNode = _styleNode;
+		} );
+		b_core.loadTemplate( require.toUrl('./{{moduleName}}.html'), function(tpl){
+			$wrapper.html( tpl );
+			init();
+		} )
+	}
+	
+	function unload(){
+		if( styleNode ){
+			$(styleNode).remove();
+		}
+		if( $wrapper ){
+			$wrapper.remove();
+		}
+	}
+	
+	function init(){
+
+	}
+
+	function subscribeHubEvents(){
+
+	}
+
+	exports.load = load;
+	exports.unload = unload;
+})
