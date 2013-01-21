@@ -990,9 +990,7 @@ Scope.prototype.offsetLoc = function(loc){
 }
 
 function calculateLoc( loc ){
-
 	return loc.line + loc.column / 1000;
-
 }
 
 Scope.prototype.traverse = function(before, after){
@@ -1416,9 +1414,7 @@ var Value = function(ast, scope){
 
 	// elements is for array
 	this.elements = null;
-
-	// if the value has other properties
-	// the value will be force convert to an object type value 
+	
 	this.props = {
 		'__protot__' : null
 	}
@@ -2336,6 +2332,9 @@ ConditionalStatement.prototype.getFlattenExpression = function(){
 	return code;
 }
 
+//=====================================
+// Conditional Tree
+//=====================================
 var ConditionalTree = function( variable, scope ){
 
 	this.root = new ConditionalTree.Node;
@@ -2346,9 +2345,6 @@ var ConditionalTree = function( variable, scope ){
 
 	this.scope = scope;
 }
-//=====================================
-// Conditional Tree
-//=====================================
 ConditionalTree.prototype.build = function( variable, scope ){
 
 	if( scope == variable.scope ){
@@ -2421,7 +2417,7 @@ ConditionalTree.prototype.buildAST = function(){
 ConditionalTree.Node = function( statement ){
 
 	this._condid = -1;
-	// {{ConditionalStatement}}
+	// Test expression
 	this._expression = null;
 	// {ConditionalTree.Node || AssignStatement || UseStatement}
 	this.consequent = [];
@@ -2480,7 +2476,7 @@ ConditionalTree.Node.prototype.build = function( statement ){
 ConditionalTree.Node.prototype.buildAST = function( varName ){
 	var consequent = TEMPLATE_BLOCK();
 	this.consequent.forEach( function( node ){
-		consequent.body.push( buildAST(node) );
+		consequent.body.push( node(buildAST) );
 	} );
 	if( this.alternate.length ){
 		var alternate = TEMPLATE_BLOCK();
