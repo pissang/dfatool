@@ -816,28 +816,20 @@ Scope.prototype.initialize = function(){
 					return false;
 				case "VariableDeclarator":
 					if( node["init"]){
-						var dfNode = scope.assign(node["id"], node["init"], scope.offsetLoc(node.loc.end) );
+						// in the case "var a = b = c;"
+						if( node["init"].type == "AssignmentExpression"){
+							processChainedAssignment( node["init"], currentBranch, scope.offsetLoc(node.loc.start) );
+							var dfNode = scope.assign(node["id"], node["init"]["left"], scope.offsetLoc(node.loc.end) );
+						}else{	
+							var dfNode = scope.assign(node["id"], node["init"], scope.offsetLoc(node.loc.end) );
+						}
 						if( currentBranch && dfNode ){
 							dfNode.conditionalStatement = currentBranch;
 						}
-						return false;
 					}
-					break;
+					return false;
 				case "AssignmentExpression":
-					// support the chained assign statement like "module.q = module.Q = module.dom.q"; 
-					// will be convert to module.Q = module.dom.q; module.q = module.dom.q
-					var leftNodes = [node.left],
-						rightMost = node.right;
-					while( rightMost.type == "AssignmentExpression" ){
-						leftNodes.unshift(rightMost.left);
-						rightMost = rightMost.right;
-					}
-					leftNodes.forEach(function(leftNode){
-						var dfNode = scope.assign( leftNode, rightMost, scope.offsetLoc(node.loc.end) );
-						if( currentBranch && dfNode ){
-							dfNode.conditionalStatement = currentBranch;
-						}
-					})
+					processChainedAssignment( node, currentBranch, scope.offsetLoc(node.loc.start) );
 					return false;
 				case "ExpressionStatement":
 					// if the statement is a single call expression
@@ -898,6 +890,39 @@ Scope.prototype.initialize = function(){
 			return true;
 
 		} )
+	}
+
+	function processChainedAssignment( node, currentBranch, baseLoc ){
+		// support the chained assign statement like "module.q = module.Q = module.dom.q"; 
+		// will be convert to module.Q = module.dom.q; module.q = module.Q
+		var nodes = [],
+			operators = [],
+			current = node;
+		while( current.type == "AssignmentExpression" ){
+			nodes.unshift(current.left);
+			operators.unshift(current.operator);
+			current = current.right;
+		}
+		nodes.unshift(current);
+		// location of each assign item need to be reverted;
+		// like a = b = c, statment b=c need to be put in the left most, and then a = b;
+		// TODO: here simple revert still has some problem, for example fooooooo = a = b;
+		// the location of a is behind the statement of a = b, so value of fooooooo is still
+		// equal to previous value of a;
+		var loc = baseLoc;
+		for(var i = 0; i < nodes.length-1; i++){
+			var rightNode = nodes[i],
+				leftNode = nodes[i+1],
+				operator = operators[i];
+				loc += scope.offsetLoc(rightNode.loc.end) - scope.offsetLoc(leftNode.loc.start);
+			var dfNode = scope.assign( leftNode, rightNode, loc);
+			if( dfNode ){
+				dfNode.operator = operator;
+				if( currentBranch){
+					dfNode.conditionalStatement = currentBranch;
+				}
+			}
+		}
 	}
 
 	initializeInBranch( this.ast, null );
@@ -990,9 +1015,7 @@ Scope.prototype.offsetLoc = function(loc){
 }
 
 function calculateLoc( loc ){
-
 	return loc.line + loc.column / 1000;
-
 }
 
 Scope.prototype.traverse = function(before, after){
@@ -1211,7 +1234,28 @@ Variable.merge = function(nodes){
 		if( ! node.accessPath ){// reaching definition
 			var value = node.value;
 			// create a new value with derived ast
-			ret = new Snapshot( value );
+			if( node.operator == "="){
+				ret = new Snapshot( value );
+			// consider the compute assign operator
+			// += -= /= *= %=....
+			}else if(node.operator.substr(1) == "="){
+				var snapshot = new Snapshot( value);
+				if( snapshot.type == "literal" 
+					&& ret.type == "literal"){
+					try{
+						eval( "ret.ast.value "+node.operator+" snapshot.ast.value");
+					}catch(e){
+						log("Unkonwn operator "+node.operator);
+					}
+					ret.update(ret.ast);
+				}else{ // convert to binary expression
+					var bexp = TEMPLATE_BINARY_EXPRESSION(node.operator.substr(0, 1), ret.ast, snapshot.ast);
+					bexp.loc = snapshot.ast.loc;
+					snapshot.update( bexp );
+					ret = snapshot;
+				}
+			}
+
 		}else{	//assign an property
 			if(ret){
 				var value = node.value;
@@ -1263,7 +1307,8 @@ var AssignStatement = function(accessPath, rhs, scope){
 		this.attachValue( new Value(rhs, this.scope) );
 	}
 	this.loc = 0;
-
+	// operator canbe =, +=, -=, *=, /=, %=
+	this.operator = "=";
 	// the value is assigend in a conditional statement
 	// {ConditionalStatement}
 	this.conditionalStatement = null;
@@ -1292,6 +1337,7 @@ AssignStatement.prototype.attachValue = function(value, keepName /*optional*/){
 	// @read-only
 	keepName = isUndefined( keepName ) ? false : keepName;
 	if( ! keepName ){
+		// PENDING: distinguish the property name with variable name??
 		if( this.accessPath ){
 			this.accessPath = Value.prototype.solveAccessPath( this.accessPath );
 			var last = this.accessPath[ this.accessPath.length-1 ];
@@ -1416,9 +1462,7 @@ var Value = function(ast, scope){
 
 	// elements is for array
 	this.elements = null;
-
-	// if the value has other properties
-	// the value will be force convert to an object type value 
+	
 	this.props = {
 		'__protot__' : null
 	}
@@ -1499,7 +1543,6 @@ Value.prototype.update = function(ast){
 		default:
 			break;
 	}
-	// set buildin
 
 }
 // add a prefix to avoid confict with native property like toString
@@ -1784,7 +1827,6 @@ var Snapshot = function( value ){
 
 	Value.call( this, value.getDerivedAst(), value.scope );
 	this.name = value.name;
-
 }
 
 Snapshot.prototype = Value.prototype;
@@ -2336,6 +2378,9 @@ ConditionalStatement.prototype.getFlattenExpression = function(){
 	return code;
 }
 
+//=====================================
+// Conditional Tree
+//=====================================
 var ConditionalTree = function( variable, scope ){
 
 	this.root = new ConditionalTree.Node;
@@ -2346,9 +2391,6 @@ var ConditionalTree = function( variable, scope ){
 
 	this.scope = scope;
 }
-//=====================================
-// Conditional Tree
-//=====================================
 ConditionalTree.prototype.build = function( variable, scope ){
 
 	if( scope == variable.scope ){
@@ -2415,13 +2457,13 @@ ConditionalTree.prototype.findNode = function( conditionalStatement ){
 		return child;
 	}, this.root);
 }
-ConditionalTree.prototype.buildAST = function(){
-	return this.root.buildAST( this.variable.name );
+ConditionalTree.prototype.buildAST = function( name ){
+	return this.root.buildAST( name || this.variable.name );
 }
 ConditionalTree.Node = function( statement ){
 
 	this._condid = -1;
-	// {{ConditionalStatement}}
+	// Test expression
 	this._expression = null;
 	// {ConditionalTree.Node || AssignStatement || UseStatement}
 	this.consequent = [];
@@ -2708,6 +2750,19 @@ function asLibrary(variable){
 //=========================================
 // exports method
 //=========================================
+exports.TEMPLATE_BLOCK						= TEMPLATE_BLOCK
+exports.TEMPLATE_IDENTIFIER					= TEMPLATE_IDENTIFIER
+exports.TEMPLATE_FUNCTION_DECLARATION		= TEMPLATE_FUNCTION_DECLARATION
+exports.TEMPLATE_ASSIGNMENT_EXPRESSION		= TEMPLATE_ASSIGNMENT_EXPRESSION
+exports.TEMPLATE_EXPRESSION_STATEMENT		= TEMPLATE_EXPRESSION_STATEMENT
+exports.TEMPLATE_VARIABLE_DECLARATOR		= TEMPLATE_VARIABLE_DECLARATOR
+exports.TEMPLATE_OBJECT_EXPRESSION			= TEMPLATE_OBJECT_EXPRESSION
+exports.TEMPLATE_LITERAL_EXPRESSION			= TEMPLATE_LITERAL_EXPRESSION
+exports.TEMPLATE_ARRAY_EXPRESSION			= TEMPLATE_ARRAY_EXPRESSION
+exports.TEMPLATE_BINARY_EXPRESSION			= TEMPLATE_BINARY_EXPRESSION
+exports.TEMPLATE_UNARY_EXPRESSION			= TEMPLATE_UNARY_EXPRESSION
+exports.TEMPLATE_IF_STATEMENT				= TEMPLATE_IF_STATEMENT
+exports.TEMPLATE_MEMBER_EXPRESSION			= TEMPLATE_MEMBER_EXPRESSION
 
 exports.walk 				= walk;
 exports.buildScope 			= buildScope;

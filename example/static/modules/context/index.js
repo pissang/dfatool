@@ -73,7 +73,7 @@ define(function(require, exports, module){
 	}
 
 	function contextSnapshot( line ){
-		currentScope = globalScope;
+		currentScope = findScope(globalScope, line);
 		viewModel.localVariables.removeAll();
 		for(var name in currentScope._defines){
 			var variable = currentScope._defines[name];
@@ -85,6 +85,22 @@ define(function(require, exports, module){
 		}
 
 		G.$app.addClass("active-sidebar");
+	}
+
+	function findScope( root, line ){
+		var current = root;
+		function find(children){
+			children.forEach(function(scope){
+				var loc = scope.ast.loc;
+				if( loc.start.line <= line && 
+					loc.end.line >= line){
+					current = scope;
+					find( scope.children );
+				}
+			})
+		}
+		find( root.children);
+		return current;
 	}
 
 	function createValViewModel(name, val){
