@@ -1,4 +1,4 @@
 function func(){
-	func();
+    func();
 }
 func();

@@ -8,7 +8,7 @@ The code analyze is based on [Parser API](https://developer.mozilla.org/en/Spide
 
 	npm install dfatool
 
-### Usage
+### Basic Usage
 
 Use [Esprima](esprima.org) to generate AST
 	
@@ -18,7 +18,7 @@ Use [Esprima](esprima.org) to generate AST
 
 Build scope for the program
 
-	var globalScope = dfatool.globalScope
+	var globalScope = dfatool.newGlobalScope();
 	dfatool.buildScope(ast, globalScope);
 
 

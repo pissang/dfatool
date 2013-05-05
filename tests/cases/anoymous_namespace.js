@@ -1,4 +1,4 @@
 var global = {};
 (function(g){
-	g.test = 10;
+    g.test = 10;
 })(global)

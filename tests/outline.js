@@ -16,7 +16,7 @@ fs.readFile(fileName, 'utf-8', function(err, data){
 	var ast = esprima.parse(data, {
 		loc : true
 	});
-	var globalScope = dfatool.globalScope
+	var globalScope = dfatool.newGlobalScope();
 	dfatool.buildScope(ast, globalScope);
 
 	globalScope.initialize();

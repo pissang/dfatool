@@ -1,9 +1,9 @@
 function getObject(){
-	return {
-		a : {
-			c : 2
-		}
-	}
+    return {
+        a : {
+            c : 2
+        }
+    }
 }
 var c = getObject();
 var b = 'a';

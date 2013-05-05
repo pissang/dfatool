@@ -1,7 +1,7 @@
 var foo = {
-	prop : "a"
+    prop : "a"
 }
 var bar = {
-	a : "text"
+    a : "text"
 }
 var res = bar[foo.prop]

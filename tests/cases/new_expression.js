@@ -1,10 +1,10 @@
 function clazz(opts){
 
-	this.name = opts.name;
+    this.name = opts.name;
 
-	this.type = "something";
+    this.type = "something";
 }
 
 var res = new clazz({
-	name : 'first'
+    name : 'first'
 })
