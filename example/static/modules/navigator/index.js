@@ -94,7 +94,8 @@ define(function(require, exports, module){
 			"new_expression",
 			"recursive_call",
 			"simple_assign",
-			"switch_statement"
+			"switch_statement",
+			"early_return"
 		];
 		var ret = []
 		for(var i = 0; i < list.length; i++){

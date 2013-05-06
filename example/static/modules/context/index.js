@@ -92,8 +92,8 @@ define(function(require, exports, module){
 		function find(children){
 			children.forEach(function(scope){
 				var loc = scope.ast.loc;
-				if( loc.start.line <= line && 
-					loc.end.line >= line){
+				if( loc.start.line < line &&
+ 					loc.end.line > line){
 					current = scope;
 					find( scope.children );
 				}
