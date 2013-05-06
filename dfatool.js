@@ -472,7 +472,7 @@ var Scope = function(parent){
     // in this pendingStatments;
     this._pendingStatements = [];
 
-    this._return = new Variable("return", this);
+    this._return = new ReturnedVariable("return", this);
 
 }
 Scope.generateID = createIDGenerator();
@@ -1277,6 +1277,27 @@ Variable.merge = function(nodes){
     return ret;
 }
 
+//-----------------------------------------------------
+// Treat the expression of return statment as a 
+// special variable. And get value from the first of the 
+// assignment chain.
+var ReturnedVariable = function(name, scope){
+    Variable.call(this, name, scope);
+}
+ReturnedVariable.generateID = createIDGenerator();
+for(var name in Variable.prototype){
+    ReturnedVariable.prototype[name] = Variable.prototype[name];
+}
+
+ReturnedVariable.prototype.inferenceIndex = function(loc, filteredChain /*optional*/){
+    // called in inference method to get possible value
+    if( filteredChain ){
+        return 0;
+    }else{
+        // called in addNode method to find where the assignment node should be put in
+        return Variable.prototype.inferenceIndex.call(this, loc);
+    }
+}
 //---------------------------------------------------
 // modified object is like a branch of svn or git
 var Modified = function(name, definedScope, useScope){
