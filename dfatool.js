@@ -1285,9 +1285,8 @@ var ReturnedVariable = function(name, scope){
     Variable.call(this, name, scope);
 }
 ReturnedVariable.generateID = createIDGenerator();
-for(var name in Variable.prototype){
-    ReturnedVariable.prototype[name] = Variable.prototype[name];
-}
+
+ReturnedVariable.prototype = Object.create(Variable.prototype);
 
 ReturnedVariable.prototype.inferenceIndex = function(loc, filteredChain /*optional*/){
     // called in inference method to get possible value
