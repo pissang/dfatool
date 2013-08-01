@@ -17,7 +17,7 @@
         define(["escodegen", "exports"], factory);
     // No module loader
     } else {
-        factory(window["dfatool"] = {});
+        factory(escodegen, window["dfatool"] = {});
     }
 
 })(function(codegen, exports) {
