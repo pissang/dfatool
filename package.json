@@ -1,6 +1,6 @@
 {
   "name": "dfatool",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "JavaScript Data Flow Analyze Tool",
   "main": "dfatool.js",
   "scripts": {
